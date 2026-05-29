@@ -4,6 +4,10 @@
 
 > ⚠️ **Disclaimer**: This software is provided "AS IS" without warranty. Use at your own risk. See [LICENSE](LICENSE) for details.
 
+## GitHub Repository
+
+🔗 **https://github.com/dmtang-jpg/SGLite**
+
 ## What it does
 
 SG Pinyin ships with **30+ unnecessary components** that consume memory, show ads, and collect data. SGLite disables them while keeping the core input method functional.
