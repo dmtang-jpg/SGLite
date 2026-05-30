@@ -545,14 +545,14 @@ function Remove-BundledSoftware {
     $ok = 0
 
     foreach ($name in $BundledAppDataDirs) {
+        $found = $false
         foreach ($basePath in @($SGAppData, $SGAppDataRoaming)) {
             $path = Join-Path $basePath $name
             if (Test-Path $path) {
                 try {
                     Remove-Item $path -Recurse -Force -ErrorAction Stop
                     if (-not (Test-Path $path)) {
-                        Write-Host "    [OK] $name" -ForegroundColor Green
-                        $ok++
+                        $found = $true
                     } else {
                         Write-Host "    [FAIL] $name (still exists)" -ForegroundColor Red
                     }
@@ -560,6 +560,10 @@ function Remove-BundledSoftware {
                     Write-Host "    [FAIL] $name - $($_.Exception.Message)" -ForegroundColor Red
                 }
             }
+        }
+        if ($found) {
+            Write-Host "    [OK] $name" -ForegroundColor Green
+            $ok++
         }
     }
 
