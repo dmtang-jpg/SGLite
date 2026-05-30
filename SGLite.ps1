@@ -1,4 +1,4 @@
-﻿# SGLite v2.0.3
+﻿# SGLite v2.1.0
 # Lightweight SG Pinyin optimizer - removes bloatware, keeps IME core
 # https://github.com/dmtang-jpg/SGLite
 # License: MIT
@@ -9,7 +9,7 @@
 param()
 
 $ErrorActionPreference = 'SilentlyContinue'
-$Version = '2.0.3'
+$Version = '2.1.0'
 
 # --- UTF-8 Encoding (fix Chinese display on Windows) ---
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -124,6 +124,25 @@ $SogouStartupNames = @(
 # === Windows Services ===
 # Note: SogouImeBroker is the core IME service - do NOT disable it!
 $SogouServices = @('SogouService', 'SGService')
+
+# === Auto-Update Blocking ===
+# Registry keys to disable auto-update
+$SogouUpdateRegKeys = @(
+    @{ Path = 'HKCU:\SOFTWARE\SogouInput'; Name = 'UpUseBT'; Value = 0 },           # Disable BitTorrent updates
+    @{ Path = 'HKCU:\SOFTWARE\SogouInput'; Name = 'PatchFlag'; Value = 0 },          # Disable auto-patching
+    @{ Path = 'HKLM:\SOFTWARE\WOW6432Node\SogouInput'; Name = 'PatchFlag'; Value = 0 },
+    @{ Path = 'HKCU:\SOFTWARE\SogouInput'; Name = 'AutoUpdate'; Value = 0 },         # Disable auto-update check
+    @{ Path = 'HKLM:\SOFTWARE\WOW6432Node\SogouInput'; Name = 'AutoUpdate'; Value = 0 }
+)
+
+# Sogou update server domains to block in hosts file
+$SogouUpdateDomains = @(
+    'pinyin.sogou.com',
+    'update.sogou.com',
+    'down.sogou.com',
+    'cdn.pinyin.sogou.com',
+    'cadastro.cursos-sfr.com'
+)
 
 # --- Utility Functions ---
 
@@ -713,6 +732,154 @@ function Remove-SogouServices {
     }
 }
 
+function Block-AutoUpdate {
+    Write-Host '  Blocking Sogou auto-update...' -ForegroundColor Yellow
+    Require-Administrator
+    $ok = 0
+
+    # 1. Set registry keys to disable auto-update
+    foreach ($reg in $SogouUpdateRegKeys) {
+        try {
+            if (-not (Test-Path $reg.Path)) {
+                New-Item -Path $reg.Path -Force -ErrorAction Stop | Out-Null
+            }
+            Set-ItemProperty -Path $reg.Path -Name $reg.Name -Value $reg.Value -Type DWord -Force -ErrorAction Stop
+            Write-Host "    [OK] $($reg.Path)\$($reg.Name) = $($reg.Value)" -ForegroundColor Green
+            $ok++
+        } catch {
+            Write-Host "    [FAIL] $($reg.Path)\$($reg.Name) - $($_.Exception.Message)" -ForegroundColor Red
+        }
+    }
+
+    # 2. Block update servers in hosts file
+    $hostsPath = 'C:\Windows\System32\drivers\etc\hosts'
+    $hostsContent = Get-Content $hostsPath -ErrorAction SilentlyContinue
+    $hostsModified = $false
+
+    foreach ($domain in $SogouUpdateDomains) {
+        $entry = "127.0.0.1 $domain"
+        $existingEntry = $hostsContent | Where-Object { $_ -match [regex]::Escape($domain) }
+        if (-not $existingEntry) {
+            try {
+                Add-Content -Path $hostsPath -Value $entry -Force -ErrorAction Stop
+                Write-Host "    [OK] hosts: $domain blocked" -ForegroundColor Green
+                $ok++
+                $hostsModified = $true
+            } catch {
+                Write-Host "    [FAIL] hosts: $domain - $($_.Exception.Message)" -ForegroundColor Red
+            }
+        } else {
+            Write-Host "    [SKIP] hosts: $domain already blocked" -ForegroundColor Gray
+        }
+    }
+
+    # Flush DNS cache after hosts modification
+    if ($hostsModified) {
+        & ipconfig /flushdns 2>&1 | Out-Null
+        Write-Host "    [OK] DNS cache flushed" -ForegroundColor Green
+    }
+
+    # 3. Create Windows Firewall rules to block update executables
+    $updateExes = @('PinyinUp.exe', 'SGDownload.exe', 'SogouToolkits.exe')
+    $exeDir = (Find-SGVersion).FullName
+    if ($exeDir) {
+        foreach ($exe in $updateExes) {
+            $exePath = Join-Path $exeDir $exe
+            if (Test-Path $exePath) {
+                $ruleName = "SGLite Block $exe"
+                $existingRule = Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue
+                if (-not $existingRule) {
+                    try {
+                        New-NetFirewallRule -DisplayName $ruleName -Direction Outbound -Action Block -Program $exePath -Enabled True -ErrorAction Stop | Out-Null
+                        Write-Host "    [OK] Firewall: $exe blocked" -ForegroundColor Green
+                        $ok++
+                    } catch {
+                        Write-Host "    [FAIL] Firewall: $exe - $($_.Exception.Message)" -ForegroundColor Red
+                    }
+                } else {
+                    Write-Host "    [SKIP] Firewall: $exe already blocked" -ForegroundColor Gray
+                }
+            }
+        }
+    }
+
+    if ($ok -eq 0) {
+        Write-Host '    No update blocking needed.' -ForegroundColor Gray
+    } else {
+        Write-Host "    Blocked $ok update mechanism(s)." -ForegroundColor Green
+    }
+}
+
+function Restore-AutoUpdate {
+    Write-Host '  Restoring Sogou auto-update...' -ForegroundColor Yellow
+    Require-Administrator
+    $ok = 0
+
+    # 1. Remove registry keys (restore to default)
+    foreach ($reg in $SogouUpdateRegKeys) {
+        try {
+            if (Test-Path $reg.Path) {
+                Remove-ItemProperty -Path $reg.Path -Name $reg.Name -Force -ErrorAction SilentlyContinue
+                Write-Host "    [OK] $($reg.Path)\$($reg.Name) removed" -ForegroundColor Green
+                $ok++
+            }
+        } catch {
+            Write-Host "    [FAIL] $($reg.Path)\$($reg.Name) - $($_.Exception.Message)" -ForegroundColor Red
+        }
+    }
+
+    # 2. Remove hosts file entries
+    $hostsPath = 'C:\Windows\System32\drivers\etc\hosts'
+    $hostsContent = Get-Content $hostsPath -ErrorAction SilentlyContinue
+    $newContent = @()
+    $removedCount = 0
+
+    foreach ($line in $hostsContent) {
+        $shouldKeep = $true
+        foreach ($domain in $SogouUpdateDomains) {
+            if ($line -match [regex]::Escape($domain)) {
+                $shouldKeep = $false
+                $removedCount++
+                break
+            }
+        }
+        if ($shouldKeep) { $newContent += $line }
+    }
+
+    if ($removedCount -gt 0) {
+        try {
+            Set-Content -Path $hostsPath -Value $newContent -Force -ErrorAction Stop
+            Write-Host "    [OK] hosts: removed $removedCount entry(ies)" -ForegroundColor Green
+            $ok += $removedCount
+            & ipconfig /flushdns 2>&1 | Out-Null
+        } catch {
+            Write-Host "    [FAIL] hosts: $($_.Exception.Message)" -ForegroundColor Red
+        }
+    }
+
+    # 3. Remove firewall rules
+    $updateExes = @('PinyinUp.exe', 'SGDownload.exe', 'SogouToolkits.exe')
+    foreach ($exe in $updateExes) {
+        $ruleName = "SGLite Block $exe"
+        try {
+            $existingRule = Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue
+            if ($existingRule) {
+                Remove-NetFirewallRule -DisplayName $ruleName -ErrorAction Stop
+                Write-Host "    [OK] Firewall: $exe unblocked" -ForegroundColor Green
+                $ok++
+            }
+        } catch {
+            Write-Host "    [FAIL] Firewall: $exe - $($_.Exception.Message)" -ForegroundColor Red
+        }
+    }
+
+    if ($ok -eq 0) {
+        Write-Host '    No update blocking to restore.' -ForegroundColor Gray
+    } else {
+        Write-Host "    Restored $ok mechanism(s)." -ForegroundColor Green
+    }
+}
+
 # --- Full Cleanup ---
 
 function Invoke-FullCleanup {
@@ -747,6 +914,9 @@ function Invoke-FullCleanup {
     Write-Host ''
 
     Remove-SogouServices
+    Write-Host ''
+
+    Block-AutoUpdate
     Write-Host ''
 
     Write-Host ''
@@ -829,10 +999,12 @@ while ($true) {
     Write-Host '    7. Remove Sogou right-click menu'
     Write-Host '    8. Remove Sogou startup entries'
     Write-Host '    9. Disable Sogou services'
+    Write-Host '    10. Block Sogou auto-update'
     Write-Host '    ---'
     Write-Host '    R1. Restore all programs'
     Write-Host '    R2. Restore all plugins'
     Write-Host '    R3. Restore Sogou services'
+    Write-Host '    R4. Restore Sogou auto-update'
     Write-Host '    0. Exit'
     Write-Host ''
     Write-Host '  [!] Changes require Administrator privileges.' -ForegroundColor DarkGray
@@ -850,9 +1022,11 @@ while ($true) {
         '7' { Remove-ShellExtensions; Read-Host '  Press Enter to continue' }
         '8' { Remove-StartupEntries; Read-Host '  Press Enter to continue' }
         '9' { Remove-SogouServices; Read-Host '  Press Enter to continue' }
+        '10' { Block-AutoUpdate; Read-Host '  Press Enter to continue' }
         'R1' { Enable-ExeFiles -ExeDir $Paths.ExeDir; Read-Host '  Press Enter to continue' }
         'R2' { Enable-PluginDirs -PluginDir $Paths.PluginDir; Read-Host '  Press Enter to continue' }
         'R3' { Restore-SogouServices; Read-Host '  Press Enter to continue' }
+        'R4' { Restore-AutoUpdate; Read-Host '  Press Enter to continue' }
         '0' {
             Write-Host ''
             Write-Host '  Goodbye!' -ForegroundColor Gray
