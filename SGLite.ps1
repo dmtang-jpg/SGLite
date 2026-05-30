@@ -1,4 +1,4 @@
-﻿# SGLite v2.0.0
+﻿# SGLite v2.0.2
 # Lightweight SG Pinyin optimizer - removes bloatware, keeps IME core
 # https://github.com/dmtang-jpg/SGLite
 # License: MIT
@@ -8,48 +8,122 @@
 [CmdletBinding()]
 param()
 
-$ErrorActionPreference = 'Continue'
-$Version = '2.0.0'
+$ErrorActionPreference = 'SilentlyContinue'
+$Version = '2.0.2'
+
+# --- UTF-8 Encoding (fix Chinese display on Windows) ---
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+[Console]::InputEncoding  = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+try { chcp 65001 | Out-Null } catch {}
+
+# --- Create HKCR PSDrive (not available by default) ---
+if (-not (Test-Path 'HKCR:')) {
+    New-PSDrive -PSProvider Registry -Root HKEY_CLASSES_ROOT -Name HKCR -ErrorAction SilentlyContinue | Out-Null
+}
 
 # --- Configuration ---
+# Note: 'SogouInput' is the actual installation directory name on disk
 $SGBase = 'C:\Program Files (x86)\SogouInput'
 $SGAppData = $env:LOCALAPPDATA
+$SGAppDataRoaming = $env:APPDATA
 $ProgramData = $env:ProgramData
 
+# === ALL non-IME executables ===
 $ExtraExeNames = @(
-    'SGTool.exe', 'SGDownload.exe', 'SGWangzai.exe', 'SGWebRender.exe',
-    'SGWizard.exe', 'SGKaomoji.exe', 'SGIGuideHelper.exe', 'SogouCloud.exe',
-    'SGSmartAssistant.exe', 'screencapture.exe', 'sgfeedbackhelper.exe',
-    'userNetSchedule.exe', 'PinyinUp.exe', 'SGBizLauncher.exe',
-    'SogouToolkits.exe', 'crashrpt.exe',
-    'SGGameCenter.exe', 'SGBizCenter.exe', 'SGCleaner.exe'
+    # Toolbox & Updater
+    'SGTool.exe', 'SGDownload.exe', 'PinyinUp.exe', 'SogouToolkits.exe',
+    # Assistant & Cloud
+    'SGWangzai.exe', 'SGSmartAssistant.exe', 'SogouCloud.exe',
+    # Web & Browser
+    'SGWebRender.exe', 'SGWizard.exe', 'SGBrowserProtect.exe',
+    # Screenshots & Media
+    'screencapture.exe', 'SGKaomoji.exe', 'SGIGuideHelper.exe',
+    # Business & Game
+    'SGBizLauncher.exe', 'SGBizCenter.exe', 'SGGameCenter.exe',
+    # Desktop & Wallpaper
+    'SGDeskControl.exe', 'SGWallPaper.exe',
+    # Feedback & Crash
+    'sgfeedbackhelper.exe', 'userNetSchedule.exe', 'crashrpt.exe',
+    # Bundled Software
+    'SGCleaner.exe', 'SGSkinBox.exe',
+    # Compression service
+    'kzip_sogou.exe', 'kzipmgr_sogou.exe',
+    # Picture viewer & disk manager
+    'kfastpic_sogou.exe', 'kdiskmgr_sogou.exe'
 )
 
+# === ALL non-IME plugin directories (in Components/) ===
 $ExtraPluginDirs = @(
+    # Original
     'AppBox', 'IChat', 'PicFace', 'SGDeskControl', 'SkinBox',
     'SogouFlash', 'Theme', 'VoiceInput', 'WriteSpirit',
-    'biz_center', 'biz_pdf', 'game_center', 'isgpet', 'systembeautify'
+    # Business & Game
+    'biz_center', 'biz_pdf', 'game_center',
+    # Desktop & System
+    'isgpet', 'systembeautify', 'wallpaper',
+    # Compression & PDF
+    'kzip', 'pdf_module', 'screenshot',
+    # Browser & Web
+    'browser_protect', 'sgbrowser', 'web_helper',
+    # Translation & Dictionary
+    'sgtranslate', 'sgdict',
+    # Skin & Emoji
+    'kaomoji', 'emoji_panel', 'skin_center'
 )
 
+# === Bundled software in AppData ===
 $BundledAppDataDirs = @(
     'fastpdf_sogou', 'kdiskmgr_sogou', 'kfastpic_sogou',
-    'kzip_sogou', 'sogoupdf', 'sogousdk'
+    'kzip_sogou', 'sogoupdf', 'sogousdk',
+    'SogouWBInput', 'SogouPY.userscheme'
 )
 
 $BundledTempDirs = @(
-    'kdiskmgr_sogou', 'kfastpic_sogou', 'kwallpaper_sogou', 'kzip_sogou'
+    'kdiskmgr_sogou', 'kfastpic_sogou', 'kwallpaper_sogou', 'kzip_sogou',
+    'sogou_install', 'sogou_update', 'SogouPY'
 )
 
-# --- Logging ---
+# === Windows Scheduled Tasks (Sogou creates many) ===
+$SogouScheduledTasks = @(
+    'SogouCloud', 'SogouImeBroker*', 'SGSmartAssistant*',
+    'SogouUpdate*', 'SogouSkin*', 'SogouGuard*',
+    'SGGameCenter*', 'SGBizCenter*', 'SogouInstaller*',
+    'SogouFlash*', 'SogouWallpaper*'
+)
 
-$LogFile = Join-Path $env:TEMP "SGLite_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
+# === Registry Shell Extensions (right-click menu) ===
+$SogouShellExtKeys = @(
+    'HKCR:\CLSID\{37A45932-6FE4-4E69-9545-D2B3B5901B2E}',  # 搜狗压缩
+    'HKCR:\CLSID\{978AA259-4E1A-4C81-9247-0B051B17A565}',  # 搜狗快译
+    'HKCR:\*\shellex\ContextMenuHandlers\SogouZip',
+    'HKCR:\*\shellex\ContextMenuHandlers\SogouKuaizip',
+    'HKCR:\*\shellex\ContextMenuHandlers\SGTranslate',
+    'HKCR:\Directory\shellex\ContextMenuHandlers\SogouZip',
+    'HKCR:\Directory\shellex\ContextMenuHandlers\SogouKuaizip',
+    'HKCR:\Directory\Background\shellex\ContextMenuHandlers\SogouZip',
+    'HKCR:\Folder\shellex\ContextMenuHandlers\SogouZip',
+    'HKCR:\AllFilesystemObjects\shellex\ContextMenuHandlers\SogouZip',
+    'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Shell Extensions\Approved\{37A45932-6FE4-4E69-9545-D2B3B5901B2E}'
+)
 
-function Write-Log {
-    param([string]$Message)
-    $ts = Get-Date -Format 'HH:mm:ss'
-    $line = "[$ts] $Message"
-    try { Add-Content -Path $LogFile -Value $line -ErrorAction SilentlyContinue } catch {}
-}
+# === Registry Startup Entries ===
+$SogouStartupKeys = @(
+    'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run',
+    'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run',
+    'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce',
+    'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce'
+)
+$SogouStartupNames = @(
+    'SogouImeBroker', 'SogouCloud', 'SGSmartAssistant',
+    'SogouSkin', 'SogouUpdate', 'SGDeskControl',
+    'SGGameCenter', 'SGBizCenter', 'SGBrowserProtect',
+    'SogouWallpaper', 'SogouInstaller', 'SogouPY'
+)
+
+# === Windows Services ===
+# Note: SogouImeBroker is the core IME service - do NOT disable it!
+$SogouServices = @('SogouService', 'SGService')
 
 # --- Utility Functions ---
 
@@ -76,25 +150,6 @@ function Require-Administrator {
         Write-Host ''
         Read-Host '  Press Enter to exit'
         exit 1
-    }
-}
-
-function Invoke-WithTimeout {
-    param(
-        [string]$Description,
-        [scriptblock]$ScriptBlock,
-        [int]$TimeoutSec = 5
-    )
-    $job = Start-Job -ScriptBlock $ScriptBlock
-    $finished = Wait-Job $job -Timeout $TimeoutSec
-    if ($finished) {
-        $output = Receive-Job $job -ErrorAction SilentlyContinue
-        Remove-Job $job -Force -ErrorAction SilentlyContinue
-        return $output
-    } else {
-        Remove-Job $job -Force -ErrorAction SilentlyContinue
-        Write-Log "[WARN] $Description timed out after ${TimeoutSec}s"
-        return $null
     }
 }
 
@@ -135,6 +190,7 @@ function Show-Status {
     Write-Host '  [Status]' -ForegroundColor White
     Write-Host ''
 
+    # IME Core (SogouImeBroker is the actual process name)
     if ($runningNames -contains 'SogouImeBroker') {
         Write-Host '    IME Core:          ' -NoNewline
         Write-Host 'Running' -ForegroundColor Green
@@ -143,8 +199,10 @@ function Show-Status {
         Write-Host 'Not Running' -ForegroundColor Red
     }
 
+    # Version
     Write-Host "    Version:           $($Paths.Version)"
 
+    # Extra processes
     $extraRunning = @()
     foreach ($exe in $ExtraExeNames) {
         $name = $exe -replace '\.exe$', ''
@@ -163,6 +221,7 @@ function Show-Status {
         Write-Host 'Clean' -ForegroundColor Green
     }
 
+    # Disabled count
     $disabledExe = @()
     if (Test-Path $Paths.ExeDir) {
         $disabledExe = Get-ChildItem "$($Paths.ExeDir)\*.exe.disabled" -ErrorAction SilentlyContinue
@@ -178,56 +237,59 @@ function Show-Status {
     }
     Write-Host "    Disabled Exe:      $($disabledExe.Count) / $($ExtraExeNames.Count)"
     Write-Host "    Disabled Plugins:  $($disabledPlugins.Count) / $($ExtraPluginDirs.Count)"
-    Write-Host "    Log File:          $LogFile"
     Write-Host ''
 }
 
 # --- Core Operations ---
 
+# Helper: Run external command with timeout (prevents hanging)
+function Invoke-WithTimeout {
+    param([string]$Command, [int]$TimeoutSec = 5)
+    $job = Start-Job -ScriptBlock { param($cmd) Invoke-Expression $cmd } -ArgumentList $Command
+    $result = Wait-Job $job -Timeout $TimeoutSec | Receive-Job
+    Remove-Job $job -Force -ErrorAction SilentlyContinue
+    return $result
+}
+
 function Stop-ExtraProcesses {
     Write-Host '  Stopping extra processes...' -ForegroundColor Yellow
-    Write-Log 'Stop-ExtraProcesses: starting'
     $count = 0
-    $procNames = $ExtraExeNames | ForEach-Object { $_ -replace '\.exe$', '' }
 
-    # Round 1: PowerShell Stop-Process
-    foreach ($name in $procNames) {
+    # Kill ALL Sogou-related processes (one round, with timeout)
+    $lockProcs = @('SogouImeBroker','SGWebRender','SogouCloud','SGTool','SGBizCenter','SGGameCenter','SGSmartAssistant','SogouCloud','SGWangzai')
+    foreach ($proc in $lockProcs) {
         try {
-            $killed = Stop-Process -Name $name -Force -PassThru -ErrorAction Stop
+            $killed = Stop-Process -Name $proc -Force -PassThru -ErrorAction Stop
             foreach ($k in $killed) {
                 Write-Host "    [OK] $($k.Name).exe (PID: $($k.Id))" -ForegroundColor Green
-                Write-Log "  Killed: $($k.Name).exe PID=$($k.Id)"
                 $count++
             }
         } catch {}
     }
-
-    # Round 2: Also stop Sogou processes that lock Components dir
-    $sogouProcs = @('SogouImeBroker', 'SGWebRender', 'SogouCloud')
-    foreach ($name in $sogouProcs) {
-        try {
-            $killed = Stop-Process -Name $name -Force -PassThru -ErrorAction Stop
-            foreach ($k in $killed) {
-                Write-Host "    [OK] $($k.Name).exe (PID: $($k.Id)) [lock-release]" -ForegroundColor Green
-                Write-Log "  Killed lock-holder: $($k.Name).exe PID=$($k.Id)"
-                $count++
-            }
-        } catch {}
-    }
-
-    # Round 3: taskkill with timeout
-    foreach ($name in ($procNames + $sogouProcs)) {
-        Invoke-WithTimeout -Description "taskkill $name" -TimeoutSec 3 -ScriptBlock {
-            & taskkill /F /IM "$($using:name).exe" 2>&1
-        }
+    # taskkill with timeout (prevents hang)
+    foreach ($proc in $lockProcs) {
+        Invoke-WithTimeout "taskkill /F /IM `"$proc.exe`"" 3 | Out-Null
     }
 
     if ($count -eq 0) {
         Write-Host '    No extra processes running.' -ForegroundColor Gray
     } else {
-        Write-Host "    Stopped $count process(es)." -ForegroundColor Green
+        Write-Host "    Stopped $count item(s)." -ForegroundColor Green
     }
-    Start-Sleep -Milliseconds 2000
+    Start-Sleep -Milliseconds 1000
+}
+
+# Re-enable Sogou services after cleanup (user may want IME to work after reboot)
+function Restore-SogouServices {
+    $sogouServices = @('SogouImeBroker', 'SogouService', 'SGService')
+    foreach ($svcName in $sogouServices) {
+        try {
+            $svc = Get-Service -Name $svcName -ErrorAction SilentlyContinue
+            if ($svc) {
+                & sc.exe config $svcName start= auto 2>&1 | Out-Null
+            }
+        } catch {}
+    }
 }
 
 function Disable-ExeFiles {
@@ -235,7 +297,6 @@ function Disable-ExeFiles {
     Require-Administrator
 
     Write-Host '  Disabling extra programs...' -ForegroundColor Yellow
-    Write-Log "Disable-ExeFiles: ExeDir=$ExeDir"
     $ok = 0; $skip = 0; $fail = 0
 
     foreach ($exe in $ExtraExeNames) {
@@ -265,45 +326,35 @@ function Disable-ExeFiles {
             try {
                 Rename-Item -Path $path -NewName "$exe.disabled" -Force -ErrorAction Stop
             } catch {
-                # Take ownership with timeout
-                Invoke-WithTimeout -Description "takeown $exe" -TimeoutSec 5 -ScriptBlock {
-                    & takeown /F "$($using:path)" /D Y 2>&1
-                }
-                Invoke-WithTimeout -Description "icacls $exe" -TimeoutSec 5 -ScriptBlock {
-                    & icacls "$($using:path)" /grant "*S-1-5-32-544:F" /Q 2>&1
-                }
+                # Take ownership (Administrators group, auto-confirm)
+                $null = & takeown /F "$path" /A 2>&1
+                $null = & icacls "$path" /grant "*S-1-5-32-544:F" /Q 2>&1
                 # Try PowerShell rename again
                 try {
                     Rename-Item -Path $path -NewName "$exe.disabled" -Force -ErrorAction Stop
                 } catch {
                     # Last resort: cmd rename
-                    $null = Invoke-WithTimeout -Description "cmd ren $exe" -TimeoutSec 3 -ScriptBlock {
-                        & cmd /c ren "$($using:path)" "$($exe).disabled" 2>&1
-                    }
+                    $null = & cmd /c ren "$path" "$exe.disabled" 2>&1
                     if (-not (Test-Path $disabledPath)) {
-                        throw $_.Exception
+                        throw "All rename methods failed for $exe"
                     }
                 }
             }
             if (Test-Path $disabledPath) {
                 Write-Host "    [OK] $exe" -ForegroundColor Green
-                Write-Log "  Disabled: $exe"
                 $ok++
             } else {
                 Write-Host "    [FAIL] $exe" -ForegroundColor Red
-                Write-Log "  FAIL: $exe"
                 $fail++
             }
         } catch {
             Write-Host "    [FAIL] $exe - $($_.Exception.Message)" -ForegroundColor Red
-            Write-Log "  FAIL: $exe - $($_.Exception.Message)"
             $fail++
         }
     }
 
     $color = if ($fail -eq 0) { 'Green' } else { 'Yellow' }
     Write-Host "    Done: $ok disabled, $skip skipped, $fail failed" -ForegroundColor $color
-    Write-Log "Disable-ExeFiles: ok=$ok skip=$skip fail=$fail"
 }
 
 function Enable-ExeFiles {
@@ -311,13 +362,13 @@ function Enable-ExeFiles {
     Require-Administrator
 
     Write-Host '  Restoring extra programs...' -ForegroundColor Yellow
-    Write-Log "Enable-ExeFiles: ExeDir=$ExeDir"
     $ok = 0
 
     foreach ($exe in $ExtraExeNames) {
         $disabledPath = Join-Path $ExeDir "$exe.disabled"
         $bakPath = Join-Path $ExeDir "$exe.disabled.bak"
 
+        # Prefer .disabled, fall back to .disabled.bak
         $restoreFrom = $null
         if (Test-Path $disabledPath) {
             $restoreFrom = $disabledPath
@@ -327,6 +378,7 @@ function Enable-ExeFiles {
         if (-not $restoreFrom) { continue }
 
         try {
+            # If original exe already exists, remove it first
             $originalPath = Join-Path $ExeDir $exe
             if (Test-Path $originalPath) {
                 Remove-Item $originalPath -Force -ErrorAction SilentlyContinue
@@ -335,12 +387,10 @@ function Enable-ExeFiles {
             if (Test-Path $originalPath) {
                 $suffix = if ($restoreFrom -eq $bakPath) { " (from backup)" } else { "" }
                 Write-Host "    [OK] $exe$suffix" -ForegroundColor Green
-                Write-Log "  Restored: $exe$suffix"
                 $ok++
             }
         } catch {
             Write-Host "    [FAIL] $exe - $($_.Exception.Message)" -ForegroundColor Red
-            Write-Log "  FAIL restore: $exe - $($_.Exception.Message)"
         }
     }
 
@@ -352,8 +402,19 @@ function Disable-PluginDirs {
     Require-Administrator
 
     Write-Host '  Disabling extra plugins...' -ForegroundColor Yellow
-    Write-Log "Disable-PluginDirs: PluginDir=$PluginDir"
     $ok = 0; $skip = 0; $fail = 0
+
+    # Kill locking processes ONCE before the loop (with timeout to prevent hang)
+    $lockProcs = @('SogouImeBroker','SGWebRender','SogouCloud','SGTool','SGBizCenter','SGGameCenter')
+    foreach ($proc in $lockProcs) {
+        Stop-Process -Name $proc -Force -ErrorAction SilentlyContinue
+        Invoke-WithTimeout "taskkill /F /IM `"$proc.exe`"" 3 | Out-Null
+    }
+    Start-Sleep -Milliseconds 500
+
+    # Pre-takeown the entire Components directory (one shot, with timeout)
+    Invoke-WithTimeout "takeown /F `"$PluginDir`" /R /A" 10 | Out-Null
+    Invoke-WithTimeout "icacls `"$PluginDir`" /grant *S-1-5-32-544:(OI)(CI)F /T /C /Q" 15 | Out-Null
 
     foreach ($plugin in $ExtraPluginDirs) {
         $path = Join-Path $PluginDir $plugin
@@ -377,65 +438,48 @@ function Disable-PluginDirs {
             }
         }
 
+        # Try 1: Direct PowerShell rename
         $renamed = $false
+        try {
+            Rename-Item -Path $path -NewName "$plugin.disabled" -Force -ErrorAction Stop
+            $renamed = $true
+        } catch {}
 
-        # Multi-round strategy: kill processes → wait → try rename (repeat 3 times)
-        for ($round = 1; $round -le 3; $round++) {
-            try {
-                Rename-Item -Path $path -NewName "$plugin.disabled" -Force -ErrorAction Stop
-                $renamed = $true
-                break
-            } catch {
-                Write-Log "  Round $round rename failed for $plugin: $($_.Exception.Message)"
-
-                # Kill locking processes
-                foreach ($lockProc in @('SogouImeBroker', 'SGWebRender', 'SogouCloud', 'SGTool')) {
-                    Stop-Process -Name $lockProc -Force -ErrorAction SilentlyContinue
-                }
-                # Also taskkill with timeout
-                Invoke-WithTimeout -Description "taskkill for $plugin r$round" -TimeoutSec 3 -ScriptBlock {
-                    foreach ($lp in @('SogouImeBroker', 'SGWebRender', 'SogouCloud', 'SGTool')) {
-                        & taskkill /F /IM "$lp.exe" 2>&1
-                    }
-                }
-                Start-Sleep -Milliseconds 1000
-
-                # Take ownership (only on first round to avoid repeated slow calls)
-                if ($round -eq 1) {
-                    Invoke-WithTimeout -Description "takeown $plugin" -TimeoutSec 5 -ScriptBlock {
-                        & takeown /F "$($using:path)" /R /D Y 2>&1
-                    }
-                    Invoke-WithTimeout -Description "icacls $plugin" -TimeoutSec 10 -ScriptBlock {
-                        & icacls "$($using:path)" /grant "*S-1-5-32-544:(OI)(CI)F" /T /C /Q 2>&1
-                    }
-                }
-            }
-        }
-
-        # If PowerShell rename still failed, try cmd rename as last resort
+        # Try 2: cmd /c ren (handles some PS rename failures)
         if (-not $renamed) {
-            $null = Invoke-WithTimeout -Description "cmd ren $plugin" -TimeoutSec 3 -ScriptBlock {
-                & cmd /c ren "$($using:path)" "$($plugin).disabled" 2>&1
-            }
-            if (Test-Path $disabledPath) {
-                $renamed = $true
-            }
+            Invoke-WithTimeout "cmd /c ren `"$path`" `"$plugin.disabled`"" 5 | Out-Null
+            if (Test-Path $disabledPath) { $renamed = $true }
         }
 
-        if ($renamed -and (Test-Path $disabledPath)) {
+        # Try 3: Kill processes again + takeown + cmd ren
+        if (-not $renamed) {
+            foreach ($proc in $lockProcs) {
+                Stop-Process -Name $proc -Force -ErrorAction SilentlyContinue
+                Invoke-WithTimeout "taskkill /F /IM `"$proc.exe`"" 3 | Out-Null
+            }
+            Start-Sleep -Milliseconds 300
+            Invoke-WithTimeout "takeown /F `"$path`" /R /A" 5 | Out-Null
+            Invoke-WithTimeout "icacls `"$path`" /grant *S-1-5-32-544:(OI)(CI)F /T /C /Q" 10 | Out-Null
+            Invoke-WithTimeout "cmd /c ren `"$path`" `"$plugin.disabled`"" 5 | Out-Null
+            if (Test-Path $disabledPath) { $renamed = $true }
+        }
+
+        if ($renamed) {
             Write-Host "    [OK] $plugin/" -ForegroundColor Green
-            Write-Log "  Disabled plugin: $plugin"
             $ok++
         } else {
-            Write-Host "    [FAIL] $plugin/" -ForegroundColor Red
-            Write-Log "  FAIL plugin: $plugin"
+            # Show diagnostic: what process has the directory locked?
+            $lockingProcs = Get-Process -ErrorAction SilentlyContinue | Where-Object {
+                try { $_.Modules.FileName -like "$path*" } catch { $false }
+            }
+            $diag = if ($lockingProcs) { "locked by: $($lockingProcs.Name -join ', ')" } else { "permission denied" }
+            Write-Host "    [FAIL] $plugin/ ($diag)" -ForegroundColor Red
             $fail++
         }
     }
 
     $color = if ($fail -eq 0) { 'Green' } else { 'Yellow' }
     Write-Host "    Done: $ok disabled, $skip skipped, $fail failed" -ForegroundColor $color
-    Write-Log "Disable-PluginDirs: ok=$ok skip=$skip fail=$fail"
 }
 
 function Enable-PluginDirs {
@@ -443,13 +487,13 @@ function Enable-PluginDirs {
     Require-Administrator
 
     Write-Host '  Restoring extra plugins...' -ForegroundColor Yellow
-    Write-Log "Enable-PluginDirs: PluginDir=$PluginDir"
     $ok = 0
 
     foreach ($plugin in $ExtraPluginDirs) {
         $disabledPath = Join-Path $PluginDir "$plugin.disabled"
         $bakPath = Join-Path $PluginDir "$plugin.disabled.bak"
 
+        # Prefer .disabled, fall back to .disabled.bak
         $restoreFrom = $null
         if (Test-Path $disabledPath) {
             $restoreFrom = $disabledPath
@@ -459,6 +503,7 @@ function Enable-PluginDirs {
         if (-not $restoreFrom) { continue }
 
         try {
+            # If original dir already exists, remove it first
             $originalPath = Join-Path $PluginDir $plugin
             if (Test-Path $originalPath) {
                 Remove-Item $originalPath -Recurse -Force -ErrorAction SilentlyContinue
@@ -467,12 +512,10 @@ function Enable-PluginDirs {
             if (Test-Path $originalPath) {
                 $suffix = if ($restoreFrom -eq $bakPath) { " (from backup)" } else { "" }
                 Write-Host "    [OK] $plugin/$suffix" -ForegroundColor Green
-                Write-Log "  Restored plugin: $plugin$suffix"
                 $ok++
             }
         } catch {
             Write-Host "    [FAIL] $plugin/ - $($_.Exception.Message)" -ForegroundColor Red
-            Write-Log "  FAIL restore plugin: $plugin - $($_.Exception.Message)"
         }
     }
 
@@ -481,25 +524,23 @@ function Enable-PluginDirs {
 
 function Remove-BundledSoftware {
     Write-Host '  Cleaning bundled software...' -ForegroundColor Yellow
-    Write-Log 'Remove-BundledSoftware: starting'
     $ok = 0
 
     foreach ($name in $BundledAppDataDirs) {
-        $path = Join-Path $SGAppData $name
-        if (Test-Path $path) {
-            try {
-                Remove-Item $path -Recurse -Force -ErrorAction Stop
-                if (-not (Test-Path $path)) {
-                    Write-Host "    [OK] $name" -ForegroundColor Green
-                    Write-Log "  Cleaned: $name"
-                    $ok++
-                } else {
-                    Write-Host "    [FAIL] $name (still exists)" -ForegroundColor Red
-                    Write-Log "  FAIL: $name (still exists)"
+        foreach ($basePath in @($SGAppData, $SGAppDataRoaming)) {
+            $path = Join-Path $basePath $name
+            if (Test-Path $path) {
+                try {
+                    Remove-Item $path -Recurse -Force -ErrorAction Stop
+                    if (-not (Test-Path $path)) {
+                        Write-Host "    [OK] $name" -ForegroundColor Green
+                        $ok++
+                    } else {
+                        Write-Host "    [FAIL] $name (still exists)" -ForegroundColor Red
+                    }
+                } catch {
+                    Write-Host "    [FAIL] $name - $($_.Exception.Message)" -ForegroundColor Red
                 }
-            } catch {
-                Write-Host "    [FAIL] $name - $($_.Exception.Message)" -ForegroundColor Red
-                Write-Log "  FAIL: $name - $($_.Exception.Message)"
             }
         }
     }
@@ -510,11 +551,9 @@ function Remove-BundledSoftware {
             try {
                 Remove-Item $path -Recurse -Force -ErrorAction Stop
                 Write-Host "    [OK] Temp/$name" -ForegroundColor Green
-                Write-Log "  Cleaned: Temp/$name"
                 $ok++
             } catch {
-                Write-Host "    [SKIP] Temp/$name (locked)" -ForegroundColor DarkGray
-                Write-Log "  SKIP: Temp/$name (locked)"
+                Write-Host "    [FAIL] Temp/$name - $($_.Exception.Message)" -ForegroundColor Red
             }
         }
     }
@@ -529,18 +568,127 @@ function Remove-BundledSoftware {
                 try {
                     Remove-Item $p -Recurse -Force -ErrorAction Stop
                     Write-Host "    [OK] ProgramData/$d" -ForegroundColor Green
-                    Write-Log "  Cleaned: ProgramData/$d"
                     $ok++
                 } catch {
-                    Write-Host "    [SKIP] ProgramData/$d (locked)" -ForegroundColor DarkGray
-                    Write-Log "  SKIP: ProgramData/$d (locked)"
+                    # Ignore locked files
                 }
             }
         }
     }
 
     Write-Host "    Cleaned $ok item(s)." -ForegroundColor Green
-    Write-Log "Remove-BundledSoftware: cleaned=$ok"
+}
+
+function Remove-ScheduledTasks {
+    Write-Host '  Removing Sogou scheduled tasks...' -ForegroundColor Yellow
+    $ok = 0
+    foreach ($taskPattern in $SogouScheduledTasks) {
+        $tasks = Get-ScheduledTask -ErrorAction SilentlyContinue | Where-Object { $_.TaskName -like $taskPattern }
+        foreach ($task in $tasks) {
+            try {
+                Unregister-ScheduledTask -TaskName $task.TaskName -Confirm:$false -ErrorAction Stop
+                Write-Host "    [OK] $($task.TaskName)" -ForegroundColor Green
+                $ok++
+            } catch {
+                Write-Host "    [FAIL] $($task.TaskName) - $($_.Exception.Message)" -ForegroundColor Red
+            }
+        }
+    }
+    if ($ok -eq 0) {
+        Write-Host '    No Sogou scheduled tasks found.' -ForegroundColor Gray
+    } else {
+        Write-Host "    Removed $ok task(s)." -ForegroundColor Green
+    }
+}
+
+function Remove-ShellExtensions {
+    Write-Host '  Removing Sogou right-click menu entries...' -ForegroundColor Yellow
+    Require-Administrator
+    $ok = 0
+    foreach ($key in $SogouShellExtKeys) {
+        if (Test-Path $key) {
+            try {
+                Remove-Item -Path $key -Recurse -Force -ErrorAction Stop
+                Write-Host "    [OK] $key" -ForegroundColor Green
+                $ok++
+            } catch {
+                Write-Host "    [FAIL] $key - $($_.Exception.Message)" -ForegroundColor Red
+            }
+        }
+    }
+    # Also search for any Sogou-related context menu handlers dynamically
+    $cmPaths = @(
+        'HKCR:\*\shellex\ContextMenuHandlers',
+        'HKCR:\Directory\shellex\ContextMenuHandlers',
+        'HKCR:\Folder\shellex\ContextMenuHandlers',
+        'HKCR:\AllFilesystemObjects\shellex\ContextMenuHandlers'
+    )
+    foreach ($cmPath in $cmPaths) {
+        if (Test-Path $cmPath) {
+            Get-ChildItem $cmPath -ErrorAction SilentlyContinue | ForEach-Object {
+                $name = $_.PSChildName
+                if ($name -match 'Sogou|kzip|kuaizip') {
+                    try {
+                        Remove-Item $_.PSPath -Recurse -Force -ErrorAction Stop
+                        Write-Host "    [OK] $cmPath\$name" -ForegroundColor Green
+                        $ok++
+                    } catch {}
+                }
+            }
+        }
+    }
+    if ($ok -eq 0) {
+        Write-Host '    No Sogou shell extensions found.' -ForegroundColor Gray
+    } else {
+        Write-Host "    Removed $ok shell extension(s)." -ForegroundColor Green
+    }
+}
+
+function Remove-StartupEntries {
+    Write-Host '  Removing Sogou startup entries...' -ForegroundColor Yellow
+    $ok = 0
+    foreach ($regPath in $SogouStartupKeys) {
+        if (-not (Test-Path $regPath)) { continue }
+        foreach ($name in $SogouStartupNames) {
+            $val = Get-ItemProperty -Path $regPath -Name $name -ErrorAction SilentlyContinue
+            if ($val) {
+                try {
+                    Remove-ItemProperty -Path $regPath -Name $name -Force -ErrorAction Stop
+                    Write-Host "    [OK] $regPath\$name" -ForegroundColor Green
+                    $ok++
+                } catch {
+                    Write-Host "    [FAIL] $name - $($_.Exception.Message)" -ForegroundColor Red
+                }
+            }
+        }
+    }
+    if ($ok -eq 0) {
+        Write-Host '    No Sogou startup entries found.' -ForegroundColor Gray
+    } else {
+        Write-Host "    Removed $ok startup entry/ies." -ForegroundColor Green
+    }
+}
+
+function Remove-SogouServices {
+    Write-Host '  Disabling Sogou Windows services...' -ForegroundColor Yellow
+    Require-Administrator
+    $ok = 0
+    foreach ($svcName in $SogouServices) {
+        try {
+            $svc = Get-Service -Name $svcName -ErrorAction SilentlyContinue
+            if ($svc) {
+                Stop-Service -Name $svcName -Force -ErrorAction SilentlyContinue
+                & sc.exe config $svcName start= disabled 2>&1 | Out-Null
+                Write-Host "    [OK] $svcName (stopped + disabled)" -ForegroundColor Green
+                $ok++
+            }
+        } catch {}
+    }
+    if ($ok -eq 0) {
+        Write-Host '    No Sogou services found.' -ForegroundColor Gray
+    } else {
+        Write-Host "    Disabled $ok service(s)." -ForegroundColor Green
+    }
 }
 
 # --- Full Cleanup ---
@@ -549,11 +697,10 @@ function Invoke-FullCleanup {
     param([hashtable]$Paths)
 
     Write-Host ''
-    Write-Host '  +==========================================+' -ForegroundColor Cyan
-    Write-Host '  |  Running full cleanup...                 |' -ForegroundColor Yellow
-    Write-Host '  +==========================================+' -ForegroundColor Cyan
+    Write-Host '  +==============================================+' -ForegroundColor Cyan
+    Write-Host '  |  Running FULL cleanup (all bloatware)...    |' -ForegroundColor Yellow
+    Write-Host '  +==============================================+' -ForegroundColor Cyan
     Write-Host ''
-    Write-Log '=== Full Cleanup Started ==='
 
     Stop-ExtraProcesses
     Start-Sleep -Milliseconds 500
@@ -566,12 +713,25 @@ function Invoke-FullCleanup {
     Write-Host ''
 
     Remove-BundledSoftware
+    Write-Host ''
+
+    Remove-ScheduledTasks
+    Write-Host ''
+
+    Remove-ShellExtensions
+    Write-Host ''
+
+    Remove-StartupEntries
+    Write-Host ''
+
+    Remove-SogouServices
+    Write-Host ''
 
     Write-Host ''
-    Write-Host '  +==========================================+' -ForegroundColor Green
-    Write-Host '  |  Cleanup complete! Reboot recommended.   |' -ForegroundColor Green
-    Write-Host '  +==========================================+' -ForegroundColor Green
-    Write-Log '=== Full Cleanup Finished ==='
+    Write-Host '  +==============================================+' -ForegroundColor Green
+    Write-Host '  |  Cleanup complete! Reboot recommended.       |' -ForegroundColor Green
+    Write-Host '  |  IME core preserved - input method works.    |' -ForegroundColor Green
+    Write-Host '  +==============================================+' -ForegroundColor Green
 }
 
 # --- Disclaimer ---
@@ -628,10 +788,6 @@ if (-not $Paths) {
     exit 1
 }
 
-Write-Log "SGLite v$Version started. SG Version: $($Paths.Version)"
-Write-Log "ExeDir: $($Paths.ExeDir)"
-Write-Log "PluginDir: $($Paths.PluginDir)"
-
 while ($true) {
     Write-Banner
     Write-Host "  Detected: SG Pinyin $($Paths.Version)" -ForegroundColor Green
@@ -647,9 +803,13 @@ while ($true) {
     Write-Host '    3. Disable extra programs only'
     Write-Host '    4. Disable extra plugins only'
     Write-Host '    5. Clean bundled software only'
+    Write-Host '    6. Remove Sogou scheduled tasks'
+    Write-Host '    7. Remove Sogou right-click menu'
+    Write-Host '    8. Remove Sogou startup entries'
+    Write-Host '    9. Disable Sogou services'
     Write-Host '    ---'
-    Write-Host '    6. Restore all programs'
-    Write-Host '    7. Restore all plugins'
+    Write-Host '    R1. Restore all programs'
+    Write-Host '    R2. Restore all plugins'
     Write-Host '    0. Exit'
     Write-Host ''
     Write-Host '  [!] Changes require Administrator privileges.' -ForegroundColor DarkGray
@@ -663,12 +823,15 @@ while ($true) {
         '3' { Disable-ExeFiles -ExeDir $Paths.ExeDir; Read-Host '  Press Enter to continue' }
         '4' { Disable-PluginDirs -PluginDir $Paths.PluginDir; Read-Host '  Press Enter to continue' }
         '5' { Remove-BundledSoftware; Read-Host '  Press Enter to continue' }
-        '6' { Enable-ExeFiles -ExeDir $Paths.ExeDir; Read-Host '  Press Enter to continue' }
-        '7' { Enable-PluginDirs -PluginDir $Paths.PluginDir; Read-Host '  Press Enter to continue' }
+        '6' { Remove-ScheduledTasks; Read-Host '  Press Enter to continue' }
+        '7' { Remove-ShellExtensions; Read-Host '  Press Enter to continue' }
+        '8' { Remove-StartupEntries; Read-Host '  Press Enter to continue' }
+        '9' { Remove-SogouServices; Read-Host '  Press Enter to continue' }
+        'R1' { Enable-ExeFiles -ExeDir $Paths.ExeDir; Read-Host '  Press Enter to continue' }
+        'R2' { Enable-PluginDirs -PluginDir $Paths.PluginDir; Read-Host '  Press Enter to continue' }
         '0' {
             Write-Host ''
             Write-Host '  Goodbye!' -ForegroundColor Gray
-            Write-Log 'SGLite exited'
             Start-Sleep -Seconds 1
             exit 0
         }

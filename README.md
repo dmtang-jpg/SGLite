@@ -1,4 +1,4 @@
-﻿# SGLite
+# SGLite
 
 **Lightweight SG Pinyin optimizer — removes bloatware, keeps IME core only.**
 
