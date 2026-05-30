@@ -161,7 +161,7 @@ function Show-Status {
 function Stop-ExtraProcesses {
     Write-Host '  Stopping extra processes...' -ForegroundColor Yellow
     $count = 0
-    $procNames = $ExtraExeNames | ForEach-Object { $_ -replace '\\.exe$', '' }
+    $procNames = $ExtraExeNames | ForEach-Object { $_ -replace '\.exe$', '' }
     foreach ($name in $procNames) {
         try {
             $killed = Stop-Process -Name $name -Force -PassThru -ErrorAction Stop
