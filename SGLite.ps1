@@ -1,4 +1,4 @@
-# SGLite v1.0.0
+﻿# SGLite v1.0.0
 # Lightweight SG Pinyin optimizer - removes bloatware, keeps IME core
 # https://github.com/your-username/SGLite
 # License: MIT
