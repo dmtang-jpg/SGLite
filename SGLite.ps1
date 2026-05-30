@@ -1,4 +1,4 @@
-﻿# SGLite v2.0.2
+﻿# SGLite v2.0.3
 # Lightweight SG Pinyin optimizer - removes bloatware, keeps IME core
 # https://github.com/dmtang-jpg/SGLite
 # License: MIT
@@ -9,7 +9,7 @@
 param()
 
 $ErrorActionPreference = 'SilentlyContinue'
-$Version = '2.0.2'
+$Version = '2.0.3'
 
 # --- UTF-8 Encoding (fix Chinese display on Windows) ---
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -86,7 +86,7 @@ $BundledTempDirs = @(
 
 # === Windows Scheduled Tasks (Sogou creates many) ===
 $SogouScheduledTasks = @(
-    'SogouCloud', 'SogouImeBroker*', 'SGSmartAssistant*',
+    'SogouCloud', 'SGSmartAssistant*',
     'SogouUpdate*', 'SogouSkin*', 'SogouGuard*',
     'SGGameCenter*', 'SGBizCenter*', 'SogouInstaller*',
     'SogouFlash*', 'SogouWallpaper*'
@@ -115,7 +115,7 @@ $SogouStartupKeys = @(
     'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce'
 )
 $SogouStartupNames = @(
-    'SogouImeBroker', 'SogouCloud', 'SGSmartAssistant',
+    'SogouCloud', 'SGSmartAssistant',
     'SogouSkin', 'SogouUpdate', 'SGDeskControl',
     'SGGameCenter', 'SGBizCenter', 'SGBrowserProtect',
     'SogouWallpaper', 'SogouInstaller', 'SogouPY'
@@ -256,7 +256,8 @@ function Stop-ExtraProcesses {
     $count = 0
 
     # Kill ALL Sogou-related processes (one round, with timeout)
-    $lockProcs = @('SogouImeBroker','SGWebRender','SogouCloud','SGTool','SGBizCenter','SGGameCenter','SGSmartAssistant','SogouCloud','SGWangzai')
+    # Note: Do NOT include SogouImeBroker here - it's the core IME process
+    $lockProcs = @('SGWebRender','SogouCloud','SGTool','SGBizCenter','SGGameCenter','SGSmartAssistant','SGWangzai')
     foreach ($proc in $lockProcs) {
         try {
             $killed = Stop-Process -Name $proc -Force -PassThru -ErrorAction Stop
@@ -405,7 +406,8 @@ function Disable-PluginDirs {
     $ok = 0; $skip = 0; $fail = 0
 
     # Kill locking processes ONCE before the loop (with timeout to prevent hang)
-    $lockProcs = @('SogouImeBroker','SGWebRender','SogouCloud','SGTool','SGBizCenter','SGGameCenter')
+    # Note: Do NOT include SogouImeBroker here - it's the core IME process
+    $lockProcs = @('SGWebRender','SogouCloud','SGTool','SGBizCenter','SGGameCenter')
     foreach ($proc in $lockProcs) {
         Stop-Process -Name $proc -Force -ErrorAction SilentlyContinue
         Invoke-WithTimeout "taskkill /F /IM `"$proc.exe`"" 3 | Out-Null
@@ -810,6 +812,7 @@ while ($true) {
     Write-Host '    ---'
     Write-Host '    R1. Restore all programs'
     Write-Host '    R2. Restore all plugins'
+    Write-Host '    R3. Restore Sogou services'
     Write-Host '    0. Exit'
     Write-Host ''
     Write-Host '  [!] Changes require Administrator privileges.' -ForegroundColor DarkGray
@@ -829,6 +832,7 @@ while ($true) {
         '9' { Remove-SogouServices; Read-Host '  Press Enter to continue' }
         'R1' { Enable-ExeFiles -ExeDir $Paths.ExeDir; Read-Host '  Press Enter to continue' }
         'R2' { Enable-PluginDirs -PluginDir $Paths.PluginDir; Read-Host '  Press Enter to continue' }
+        'R3' { Restore-SogouServices; Read-Host '  Press Enter to continue' }
         '0' {
             Write-Host ''
             Write-Host '  Goodbye!' -ForegroundColor Gray
