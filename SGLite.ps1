@@ -9,7 +9,7 @@
 param()
 
 $ErrorActionPreference = 'SilentlyContinue'
-$Version = '1.0.0'
+$Version = '1.0.1'
 
 # --- Configuration ---
 # Note: 'SogouInput' is the actual installation directory name on disk
@@ -161,7 +161,7 @@ function Show-Status {
 function Stop-ExtraProcesses {
     Write-Host '  Stopping extra processes...' -ForegroundColor Yellow
     $count = 0
-    $procNames = $ExtraExeNames | ForEach-Object { $_ -replace '\.exe$', '' }
+    $procNames = $ExtraExeNames | ForEach-Object { $_ -replace '\\.exe$', '' }
     foreach ($name in $procNames) {
         try {
             $killed = Stop-Process -Name $name -Force -PassThru -ErrorAction Stop
@@ -173,13 +173,26 @@ function Stop-ExtraProcesses {
             # Process not running, skip
         }
     }
+    # Also stop SogouImeBroker and other Sogou processes that lock Components dir
+    $sogouProcs = @('SogouImeBroker', 'SGWebRender', 'SogouCloud')
+    foreach ($name in $sogouProcs) {
+        try {
+            $killed = Stop-Process -Name $name -Force -PassThru -ErrorAction Stop
+            foreach ($k in $killed) {
+                Write-Host "    [OK] $($k.Name).exe (PID: $($k.Id)) [lock-release]" -ForegroundColor Green
+                $count++
+            }
+        } catch {
+            # Not running
+        }
+    }
     if ($count -eq 0) {
         Write-Host '    No extra processes running.' -ForegroundColor Gray
     } else {
         Write-Host "    Stopped $count process(es)." -ForegroundColor Green
     }
     # Wait for file handles to release
-    Start-Sleep -Milliseconds 1000
+    Start-Sleep -Milliseconds 2000
 }
 
 function Disable-ExeFiles {
@@ -216,9 +229,19 @@ function Disable-ExeFiles {
             try {
                 Rename-Item -Path $path -NewName "$exe.disabled" -Force -ErrorAction Stop
             } catch {
-                $null = & takeown /F "$path" 2>&1
-                $null = & icacls "$path" /grant Everyone:F 2>&1
-                Rename-Item -Path $path -NewName "$exe.disabled" -Force -ErrorAction Stop
+                # Take ownership (auto-confirm with /D Y)
+                $null = & takeown /F "$path" /D Y 2>&1
+                $null = & icacls "$path" /grant "*S-1-5-32-544:F" /Q 2>&1
+                # Try PowerShell rename again
+                try {
+                    Rename-Item -Path $path -NewName "$exe.disabled" -Force -ErrorAction Stop
+                } catch {
+                    # Last resort: cmd rename
+                    $null = & cmd /c ren "$path" "$exe.disabled" 2>&1
+                    if (-not (Test-Path $disabledPath)) {
+                        throw $_.Exception
+                    }
+                }
             }
             if (Test-Path $disabledPath) {
                 Write-Host "    [OK] $exe" -ForegroundColor Green
@@ -311,9 +334,25 @@ function Disable-PluginDirs {
             try {
                 Rename-Item -Path $path -NewName "$plugin.disabled" -Force -ErrorAction Stop
             } catch {
+                # Stop any Sogou process that might lock files in this dir
+                foreach ($lockProc in @('SogouImeBroker','SGWebRender','SogouCloud','SGTool')) {
+                    Stop-Process -Name $lockProc -Force -ErrorAction SilentlyContinue
+                }
+                Start-Sleep -Milliseconds 500
+                # Take ownership recursively (auto-confirm with /D Y)
                 $null = & takeown /F "$path" /R /D Y 2>&1
-                $null = & icacls "$path" /grant Everyone:F /T /C 2>&1
-                Rename-Item -Path $path -NewName "$plugin.disabled" -Force -ErrorAction Stop
+                $null = & icacls "$path" /grant "*S-1-5-32-544:(OI)(CI)F" /T /C /Q 2>&1
+                # Try PowerShell rename again
+                try {
+                    Rename-Item -Path $path -NewName "$plugin.disabled" -Force -ErrorAction Stop
+                } catch {
+                    # Last resort: cmd rename (handles some edge cases PowerShell can't)
+                    $destPath = "$path.disabled"
+                    $null = & cmd /c ren "$path" "$plugin.disabled" 2>&1
+                    if (-not (Test-Path $destPath)) {
+                        throw $_.Exception
+                    }
+                }
             }
             if (Test-Path $disabledPath) {
                 Write-Host "    [OK] $plugin/" -ForegroundColor Green
