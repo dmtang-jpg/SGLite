@@ -182,8 +182,10 @@ function Get-SGPaths {
 function Show-Status {
     param([hashtable]$Paths)
 
+    # Check all known ExtraExeNames + SogouImeBroker
+    $knownNames = @('SogouImeBroker') + ($ExtraExeNames | ForEach-Object { $_ -replace '\.exe$', '' })
     $procs = Get-Process -ErrorAction SilentlyContinue | Where-Object {
-        $_.Name -match '^Sogou' -or $_.Name -match '^SG[A-Z]'
+        $knownNames -contains $_.Name
     }
     $runningNames = $procs | ForEach-Object { $_.Name }
 
@@ -282,14 +284,28 @@ function Stop-ExtraProcesses {
 
 # Re-enable Sogou services after cleanup (user may want IME to work after reboot)
 function Restore-SogouServices {
+    Write-Host '  Restoring Sogou services...' -ForegroundColor Yellow
+    $ok = 0
     $sogouServices = @('SogouImeBroker', 'SogouService', 'SGService')
     foreach ($svcName in $sogouServices) {
         try {
             $svc = Get-Service -Name $svcName -ErrorAction SilentlyContinue
             if ($svc) {
                 & sc.exe config $svcName start= auto 2>&1 | Out-Null
+                Start-Service -Name $svcName -ErrorAction SilentlyContinue
+                Write-Host "    [OK] $svcName (set to auto + started)" -ForegroundColor Green
+                $ok++
+            } else {
+                Write-Host "    [SKIP] $svcName (not found)" -ForegroundColor Gray
             }
-        } catch {}
+        } catch {
+            Write-Host "    [FAIL] $svcName - $($_.Exception.Message)" -ForegroundColor Red
+        }
+    }
+    if ($ok -eq 0) {
+        Write-Host '    No Sogou services found.' -ForegroundColor Gray
+    } else {
+        Write-Host "    Restored $ok service(s)." -ForegroundColor Green
     }
 }
 
