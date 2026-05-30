@@ -123,7 +123,7 @@ $SogouStartupNames = @(
 
 # === Windows Services ===
 # Note: SogouImeBroker is the core IME service - do NOT disable it!
-$SogouServices = @('SogouService', 'SGService')
+$SogouServices = @('SogouSvc')
 
 # === Auto-Update Blocking ===
 # Registry keys to disable auto-update
@@ -140,8 +140,7 @@ $SogouUpdateDomains = @(
     'pinyin.sogou.com',
     'update.sogou.com',
     'down.sogou.com',
-    'cdn.pinyin.sogou.com',
-    'cadastro.cursos-sfr.com'
+    'cdn.pinyin.sogou.com'
 )
 
 # --- Utility Functions ---
@@ -305,7 +304,7 @@ function Stop-ExtraProcesses {
 function Restore-SogouServices {
     Write-Host '  Restoring Sogou services...' -ForegroundColor Yellow
     $ok = 0
-    $sogouServices = @('SogouImeBroker', 'SogouService', 'SGService')
+    $sogouServices = @('SogouImeBroker', 'SogouSvc')
     foreach ($svcName in $sogouServices) {
         try {
             $svc = Get-Service -Name $svcName -ErrorAction SilentlyContinue
