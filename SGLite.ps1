@@ -660,14 +660,20 @@ function Remove-ShellExtensions {
     $cmPaths = @(
         'HKCR:\*\shellex\ContextMenuHandlers',
         'HKCR:\Directory\shellex\ContextMenuHandlers',
+        'HKCR:\Directory\Background\shellex\ContextMenuHandlers',
         'HKCR:\Folder\shellex\ContextMenuHandlers',
-        'HKCR:\AllFilesystemObjects\shellex\ContextMenuHandlers'
+        'HKCR:\AllFilesystemObjects\shellex\ContextMenuHandlers',
+        'HKCR:\*\shell',
+        'HKCR:\Directory\shell',
+        'HKCR:\Directory\Background\shell',
+        'HKCR:\Folder\shell',
+        'HKCR:\AllFilesystemObjects\shell'
     )
     foreach ($cmPath in $cmPaths) {
         if (Test-Path -LiteralPath $cmPath) {
             Get-ChildItem -LiteralPath $cmPath -ErrorAction SilentlyContinue | ForEach-Object {
                 $name = $_.PSChildName
-                if ($name -match 'Sogou|kzip|kuaizip') {
+                if ($name -match '(?i)sogou|kzip|kuaizip|sgsearch|sgzip|sgcompress|sgtranslate') {
                     try {
                         Remove-Item -LiteralPath $_.PSPath -Recurse -Force -ErrorAction Stop
                         Write-Host "    [OK] $cmPath\$name" -ForegroundColor Green
