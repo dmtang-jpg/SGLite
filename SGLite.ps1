@@ -1,4 +1,4 @@
-﻿# SGLite v2.1.0
+﻿# SGLite v2.1.1
 # Lightweight SG Pinyin optimizer - removes bloatware, keeps IME core
 # https://github.com/dmtang-jpg/SGLite
 # License: MIT
@@ -9,7 +9,7 @@
 param()
 
 $ErrorActionPreference = 'SilentlyContinue'
-$Version = '2.1.0'
+$Version = '2.1.1'
 
 # --- UTF-8 Encoding (fix Chinese display on Windows) ---
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -646,9 +646,9 @@ function Remove-ShellExtensions {
     Require-Administrator
     $ok = 0
     foreach ($key in $SogouShellExtKeys) {
-        if (Test-Path $key) {
+        if (Test-Path -LiteralPath $key) {
             try {
-                Remove-Item -Path $key -Recurse -Force -ErrorAction Stop
+                Remove-Item -LiteralPath $key -Recurse -Force -ErrorAction Stop
                 Write-Host "    [OK] $key" -ForegroundColor Green
                 $ok++
             } catch {
@@ -664,12 +664,12 @@ function Remove-ShellExtensions {
         'HKCR:\AllFilesystemObjects\shellex\ContextMenuHandlers'
     )
     foreach ($cmPath in $cmPaths) {
-        if (Test-Path $cmPath) {
-            Get-ChildItem $cmPath -ErrorAction SilentlyContinue | ForEach-Object {
+        if (Test-Path -LiteralPath $cmPath) {
+            Get-ChildItem -LiteralPath $cmPath -ErrorAction SilentlyContinue | ForEach-Object {
                 $name = $_.PSChildName
                 if ($name -match 'Sogou|kzip|kuaizip') {
                     try {
-                        Remove-Item $_.PSPath -Recurse -Force -ErrorAction Stop
+                        Remove-Item -LiteralPath $_.PSPath -Recurse -Force -ErrorAction Stop
                         Write-Host "    [OK] $cmPath\$name" -ForegroundColor Green
                         $ok++
                     } catch {}
@@ -757,7 +757,7 @@ function Block-AutoUpdate {
 
     foreach ($domain in $SogouUpdateDomains) {
         $entry = "127.0.0.1 $domain"
-        $existingEntry = $hostsContent | Where-Object { $_ -match [regex]::Escape($domain) }
+        $existingEntry = $hostsContent | Where-Object { $_ -match "^\s*\d+\.\d+\.\d+\.\d+\s+$([regex]::Escape($domain))\s*$" }
         if (-not $existingEntry) {
             try {
                 Add-Content -Path $hostsPath -Value $entry -Force -ErrorAction Stop
@@ -836,7 +836,7 @@ function Restore-AutoUpdate {
     foreach ($line in $hostsContent) {
         $shouldKeep = $true
         foreach ($domain in $SogouUpdateDomains) {
-            if ($line -match [regex]::Escape($domain)) {
+            if ($line -match "^\s*\d+\.\d+\.\d+\.\d+\s+$([regex]::Escape($domain))\s*$") {
                 $shouldKeep = $false
                 $removedCount++
                 break
