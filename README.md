@@ -21,11 +21,13 @@ SG Pinyin ships with **30+ unnecessary components** that consume memory, show ad
 ## Features
 
 - ✅ **One-click cleanup** — single command removes all bloatware
+- ✅ **Deep registry scan** — removes CLSID, Approved extensions, SearchScopes, BHO
+- ✅ **Right-click menu cleanup** — removes leftover context menu entries (搜狗搜索/搜狗压缩)
 - ✅ **Auto-detect version** — works across SG Pinyin updates
 - ✅ **Fully reversible** — all changes can be undone via Restore options
 - ✅ **Admin check** — prompts for elevation when needed
 - ✅ **Safe operations** — renames files (.disabled) instead of deleting
-- ✅ **Interactive menu** — easy-to-use colored interface
+- ✅ **Interactive menu** — easy-to-use colored interface with 13+ options
 
 ## Quick Start
 
@@ -53,9 +55,19 @@ Set-ExecutionPolicy Bypass -Scope Process -Force
     3. Disable extra programs only
     4. Disable extra plugins only
     5. Clean bundled software only
+    6. Remove Sogou scheduled tasks
+    7. Remove Sogou right-click menu
+    8. Remove Sogou startup entries
+    9. Disable Sogou services
+    10. Block Sogou auto-update
+    11. Remove Sogou CLSID entries
+    12. Remove Approved shell extensions
+    13. Deep registry cleanup
     ---
-    6. Restore all programs
-    7. Restore all plugins
+    R1. Restore all programs
+    R2. Restore all plugins
+    R3. Restore Sogou services
+    R4. Restore Sogou auto-update
     0. Exit
 ```
 
@@ -99,8 +111,11 @@ SGLite uses **file renaming** (`.exe` → `.exe.disabled`) rather than deletion:
 2. Renames unnecessary `.exe` files with `.disabled` suffix
 3. Renames plugin directories with `.disabled` suffix
 4. Deletes bundled software from AppData
+5. Removes Sogou scheduled tasks / services
+6. Cleans registry: shell extensions, CLSID, Approved, SearchScopes, BHO
+7. Blocks auto-update via hosts file + firewall rules
 
-This approach is **safe and reversible** — you can restore everything via menu options 6/7.
+This approach is **safe and reversible** — you can restore everything via Restore options.
 
 ## Requirements
 
@@ -114,7 +129,7 @@ This approach is **safe and reversible** — you can restore everything via menu
 A: No. Only the IME core (`SogouImeBroker.exe`) is preserved. All other components are non-essential.
 
 **Q: Can I undo the changes?**
-A: Yes. Run the tool again and select options 6 (Restore programs) and 7 (Restore plugins).
+A: Yes. Run the tool again and select R1 (Restore programs), R2 (Restore plugins), R3 (Restore services), and R4 (Restore auto-update).
 
 **Q: Will updates undo the changes?**
 A: Possibly. Re-run SGLite after input method updates.
@@ -137,6 +152,19 @@ MIT License — see [LICENSE](LICENSE) file.
 Contributions are welcome! Please open an issue first to discuss changes.
 
 ## Changelog
+
+### v2.2.0 (2025-06-05)
+- **Deep registry scan** — 10 new scan dimensions from `Scan-SogouDeep.ps1` merged into SGLite
+  - CLSID full scan: dynamically finds all Sogou-registered CLSIDs
+  - Approved Shell Extensions full scan: removes all Approved Sogou entries
+  - Uninstall entries, App Paths, SearchScopes, BHO, ShellServiceObjects
+  - ShellExecuteHooks, SharedTaskScheduler, ShellIconOverlay, Winlogon\Notify
+  - Policies Explorer/System
+- **Widened right-click menu regex** — 30+ patterns (was 6), catches 搜狗搜索/搜狗压缩/etc
+- **Extra shell paths** — added Drive, LibraryFolder, LibraryLocation to context menu scan
+- **Startup scan expanded** — WOW6432Node + StartupApproved paths (was only Run/RunOnce)
+- **More startup names** — 20 entries (was 11)
+- Menu extended to 13 cleanup options + 4 restore options
 
 ### v1.0.0 (2025-05-29)
 - Initial release

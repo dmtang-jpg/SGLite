@@ -1,4 +1,4 @@
-﻿# SGLite v2.1.1
+﻿# SGLite v2.2.0
 # Lightweight SG Pinyin optimizer - removes bloatware, keeps IME core
 # https://github.com/dmtang-jpg/SGLite
 # License: MIT
@@ -9,7 +9,7 @@
 param()
 
 $ErrorActionPreference = 'SilentlyContinue'
-$Version = '2.1.1'
+$Version = '2.2.0'
 
 # --- UTF-8 Encoding (fix Chinese display on Windows) ---
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -112,13 +112,26 @@ $SogouStartupKeys = @(
     'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run',
     'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run',
     'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce',
-    'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce'
+    'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce',
+    # WOW6432Node (32-bit on 64-bit)
+    'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Run',
+    'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\RunOnce',
+    # StartupApproved (disabled-by-user startup entries)
+    'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run',
+    'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run32',
+    'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run',
+    'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run32'
 )
 $SogouStartupNames = @(
     'SogouCloud', 'SGSmartAssistant',
     'SogouSkin', 'SogouUpdate', 'SGDeskControl',
     'SGGameCenter', 'SGBizCenter', 'SGBrowserProtect',
-    'SogouWallpaper', 'SogouInstaller', 'SogouPY'
+    'SogouWallpaper', 'SogouInstaller', 'SogouPY',
+    'SGWangzai', 'SGWebRender', 'SGWizard',
+    'SGIGuideHelper', 'SGScreenshot',
+    'SGCleaner', 'SGFeedback', 'SGTranslate',
+    'SGSkinBox', 'SGKaomoji', 'SGVoice',
+    'SGWrite', 'SGTheme', 'kzip_sogou'
 )
 
 # === Windows Services ===
@@ -663,17 +676,21 @@ function Remove-ShellExtensions {
         'HKCR:\Directory\Background\shellex\ContextMenuHandlers',
         'HKCR:\Folder\shellex\ContextMenuHandlers',
         'HKCR:\AllFilesystemObjects\shellex\ContextMenuHandlers',
+        'HKCR:\Drive\shellex\ContextMenuHandlers',
+        'HKCR:\LibraryFolder\shellex\ContextMenuHandlers',
+        'HKCR:\LibraryLocation\shellex\ContextMenuHandlers',
         'HKCR:\*\shell',
         'HKCR:\Directory\shell',
         'HKCR:\Directory\Background\shell',
         'HKCR:\Folder\shell',
-        'HKCR:\AllFilesystemObjects\shell'
+        'HKCR:\AllFilesystemObjects\shell',
+        'HKCR:\Drive\shell'
     )
     foreach ($cmPath in $cmPaths) {
         if (Test-Path -LiteralPath $cmPath) {
             Get-ChildItem -LiteralPath $cmPath -ErrorAction SilentlyContinue | ForEach-Object {
                 $name = $_.PSChildName
-                if ($name -match '(?i)sogou|kzip|kuaizip|sgsearch|sgzip|sgcompress|sgtranslate') {
+                if ($name -match '(?i)sogou|kzip|kuaizip|sgsearch|sgzip|sgcompress|sgtranslate|sgkaomoji|sgdesk|sgbiz|sggame|sgwangzai|sgsmart|sgskin|sgwallpaper|sginstaller|sgweb|sgwizard|sgbrowser|sgclean|sgfeedback|sgdisk|sgfastpic|sgpdf|sgscreenshot|sgemoji|sgtheme|sgvoice|sgwrite') {
                     try {
                         Remove-Item -LiteralPath $_.PSPath -Recurse -Force -ErrorAction Stop
                         Write-Host "    [OK] $cmPath\$name" -ForegroundColor Green
@@ -687,6 +704,212 @@ function Remove-ShellExtensions {
         Write-Host '    No Sogou shell extensions found.' -ForegroundColor Gray
     } else {
         Write-Host "    Removed $ok shell extension(s)." -ForegroundColor Green
+    }
+}
+
+function Remove-SogouCLSIDs {
+    <#
+    .SYNOPSIS
+    Scan ALL CLSID entries in HKCR:\CLSID for Sogou-related defaults
+    and remove them. The deep scanner found that SGLite's hardcoded
+    2 CLSIDs miss many dynamically-registered entries.
+    #>
+    Write-Host '  Scanning CLSID entries for Sogou traces...' -ForegroundColor Yellow
+    Require-Administrator
+    $ok = 0
+    $clsidPath = 'HKCR:\CLSID'
+    if (Test-Path $clsidPath) {
+        Get-ChildItem -LiteralPath $clsidPath -ErrorAction SilentlyContinue | ForEach-Object {
+            $clsid = $_.PSChildName
+            $default = (Get-ItemProperty -Path "HKCR:\CLSID\$clsid" -Name '(default)' -ErrorAction SilentlyContinue).'(default)'
+            if ($default -match '(?i)sogou|kzip|kuaizip|sgcompress|sgtranslate|sgkaomoji|sgdesk|sgbiz|sggame|sgwangzai|sgsmart|sgskin|sgwallpaper|sginstaller|sgweb|sgwizard|sgbrowser|sgclean|sgfeedback|sgdisk|sgfastpic|sgpdf|sgscreenshot|sgemoji|sgtheme|sgvoice|sgwrite|sgsearch|sgzip') {
+                try {
+                    Remove-Item -LiteralPath "HKCR:\CLSID\$clsid" -Recurse -Force -ErrorAction Stop
+                    Write-Host "    [OK] CLSID $clsid ($default)" -ForegroundColor Green
+                    $ok++
+                } catch {
+                    Write-Host "    [FAIL] CLSID $clsid - $($_.Exception.Message)" -ForegroundColor Red
+                }
+            }
+        }
+    }
+    if ($ok -eq 0) {
+        Write-Host '    No Sogou CLSID entries found.' -ForegroundColor Gray
+    } else {
+        Write-Host "    Removed $ok CLSID entry/ies." -ForegroundColor Green
+    }
+}
+
+function Remove-SogouApprovedExts {
+    <#
+    .SYNOPSIS
+    Scan ALL Approved Shell Extensions for Sogou-related entries.
+    The deep scanner found SGLite's single hardcoded Approved key
+    misses many dynamically-registered extensions.
+    #>
+    Write-Host '  Scanning Approved Shell Extensions...' -ForegroundColor Yellow
+    Require-Administrator
+    $ok = 0
+    $approvedPath = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Shell Extensions\Approved'
+    if (Test-Path $approvedPath) {
+        $props = Get-ItemProperty -Path $approvedPath -ErrorAction SilentlyContinue
+        if ($props) {
+            $props.PSObject.Properties | ForEach-Object {
+                $name = $_.Name
+                $val = $_.Value
+                if ($val -match '(?i)sogou|kzip|kuaizip|sgcompress|sgtranslate|sgkaomoji|sgdesk|sgbiz|sggame|sgwangzai|sgsmart|sgskin|sgwallpaper|sginstaller|sgweb|sgwizard|sgbrowser|sgclean|sgfeedback|sgdisk|sgfastpic|sgpdf|sgscreenshot|sgemoji|sgtheme|sgvoice|sgwrite|sgsearch|sgzip') {
+                    try {
+                        Remove-ItemProperty -Path $approvedPath -Name $name -Force -ErrorAction Stop
+                        Write-Host "    [OK] Approved $name ($val)" -ForegroundColor Green
+                        $ok++
+                    } catch {
+                        Write-Host "    [FAIL] Approved $name - $($_.Exception.Message)" -ForegroundColor Red
+                    }
+                }
+            }
+        }
+    }
+    if ($ok -eq 0) {
+        Write-Host '    No Sogou Approved shell extensions found.' -ForegroundColor Gray
+    } else {
+        Write-Host "    Removed $ok Approved extension(s)." -ForegroundColor Green
+    }
+}
+
+function Remove-SogouDeepRegistry {
+    <#
+    .SYNOPSIS
+    Deep registry scan: Uninstall entries, SearchScopes, BHO,
+    ShellServiceObjects, Winlogon, ShellIconOverlay, ShellExecuteHooks,
+    SharedTaskScheduler, Policies. These are places Sogou often leaves
+    traces that SGLite v2.1.x and earlier missed entirely.
+    #>
+    Write-Host '  Deep registry scan for Sogou traces...' -ForegroundColor Yellow
+    Require-Administrator
+    $ok = 0
+    $sogouPattern = '(?i)sogou|kzip|kuaizip|sgcompress|sgtranslate|sgkaomoji|sgdesk|sgbiz|sggame|sgwangzai|sgsmart|sgskin|sgwallpaper|sginstaller|sgweb|sgwizard|sgbrowser|sgclean|sgfeedback|sgdisk|sgfastpic|sgpdf|sgscreenshot|sgemoji|sgtheme|sgvoice|sgwrite|sgsearch|sgzip'
+
+    # Uninstall entries
+    $uninstallPaths = @(
+        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
+        'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall',
+        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall'
+    )
+    foreach ($up in $uninstallPaths) {
+        if (-not (Test-Path $up)) { continue }
+        Get-ChildItem -Path $up -ErrorAction SilentlyContinue | ForEach-Object {
+            $subkey = $_.PSChildName
+            $displayName = (Get-ItemProperty -Path "$up\$subkey" -Name 'DisplayName' -ErrorAction SilentlyContinue).DisplayName
+            if ($displayName -and ($displayName -match $sogouPattern -or $subkey -match $sogouPattern)) {
+                try {
+                    Remove-Item -Path "$up\$subkey" -Recurse -Force -ErrorAction Stop
+                    Write-Host "    [OK] Uninstall: $subkey ($displayName)" -ForegroundColor Green
+                    $ok++
+                } catch {
+                    Write-Host "    [FAIL] Uninstall: $subkey - $($_.Exception.Message)" -ForegroundColor Red
+                }
+            }
+        }
+    }
+
+    # App Paths
+    $appPaths = @(
+        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths',
+        'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\App Paths'
+    )
+    foreach ($ap in $appPaths) {
+        if (-not (Test-Path $ap)) { continue }
+        Get-ChildItem -Path $ap -ErrorAction SilentlyContinue | ForEach-Object {
+            if ($_.PSChildName -match $sogouPattern) {
+                try {
+                    Remove-Item -LiteralPath $_.PSPath -Recurse -Force -ErrorAction Stop
+                    Write-Host "    [OK] AppPath: $($_.PSChildName)" -ForegroundColor Green
+                    $ok++
+                } catch {
+                    Write-Host "    [FAIL] AppPath: $($_.PSChildName) - $($_.Exception.Message)" -ForegroundColor Red
+                }
+            }
+        }
+    }
+
+    # Internet Explorer SearchScopes (Sogou often hijacks these)
+    $searchScopePaths = @(
+        'HKCU:\SOFTWARE\Microsoft\Internet Explorer\SearchScopes',
+        'HKLM:\SOFTWARE\Microsoft\Internet Explorer\SearchScopes'
+    )
+    foreach ($ssp in $searchScopePaths) {
+        if (-not (Test-Path $ssp)) { continue }
+        Get-ChildItem -Path $ssp -ErrorAction SilentlyContinue | ForEach-Object {
+            $displayName = (Get-ItemProperty -Path $_.PSPath -Name 'DisplayName' -ErrorAction SilentlyContinue).DisplayName
+            $url = (Get-ItemProperty -Path $_.PSPath -Name 'URL' -ErrorAction SilentlyContinue).URL
+            if (($displayName -match $sogouPattern) -or ($url -match '(?i)sogou')) {
+                try {
+                    Remove-Item -LiteralPath $_.PSPath -Recurse -Force -ErrorAction Stop
+                    Write-Host "    [OK] SearchScope: $displayName" -ForegroundColor Green
+                    $ok++
+                } catch {}
+            }
+        }
+    }
+
+    # Browser Helper Objects, ShellServiceObjects, ShellExecuteHooks, SharedTaskScheduler
+    $deepPaths = @(
+        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Browser Helper Objects',
+        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Browser Helper Objects',
+        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\ShellServiceObjects',
+        'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\ShellServiceObjects',
+        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\ShellServiceObjects',
+        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\ShellExecuteHooks',
+        'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Explorer\ShellExecuteHooks',
+        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\ShellExecuteHooks',
+        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\SharedTaskScheduler',
+        'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Explorer\SharedTaskScheduler',
+        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\SharedTaskScheduler',
+        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\ShellIconOverlayIdentifiers',
+        'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Explorer\ShellIconOverlayIdentifiers',
+        'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon\Notify'
+    )
+    foreach ($dp in $deepPaths) {
+        if (-not (Test-Path $dp)) { continue }
+        Get-ChildItem -Path $dp -ErrorAction SilentlyContinue | ForEach-Object {
+            $name = $_.PSChildName
+            if ($name -match $sogouPattern) {
+                try {
+                    Remove-Item -LiteralPath $_.PSPath -Recurse -Force -ErrorAction Stop
+                    Write-Host "    [OK] $dp\$name" -ForegroundColor Green
+                    $ok++
+                } catch {}
+            }
+        }
+    }
+
+    # Policies Explorer/System — check for Sogou-related restrictions
+    $policyPaths = @(
+        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer',
+        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer',
+        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System',
+        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System'
+    )
+    foreach ($pp in $policyPaths) {
+        if (-not (Test-Path $pp)) { continue }
+        $props = Get-ItemProperty -Path $pp -ErrorAction SilentlyContinue
+        if ($props) {
+            $props.PSObject.Properties | ForEach-Object {
+                if ($_.Name -match $sogouPattern) {
+                    try {
+                        Remove-ItemProperty -Path $pp -Name $_.Name -Force -ErrorAction Stop
+                        Write-Host "    [OK] Policy: $pp\$($_.Name)" -ForegroundColor Green
+                        $ok++
+                    } catch {}
+                }
+            }
+        }
+    }
+
+    if ($ok -eq 0) {
+        Write-Host '    No deep Sogou registry traces found.' -ForegroundColor Gray
+    } else {
+        Write-Host "    Cleaned $ok deep registry trace(s)." -ForegroundColor Green
     }
 }
 
@@ -915,10 +1138,19 @@ function Invoke-FullCleanup {
     Remove-ShellExtensions
     Write-Host ''
 
+    Remove-SogouCLSIDs
+    Write-Host ''
+
+    Remove-SogouApprovedExts
+    Write-Host ''
+
     Remove-StartupEntries
     Write-Host ''
 
     Remove-SogouServices
+    Write-Host ''
+
+    Remove-SogouDeepRegistry
     Write-Host ''
 
     Block-AutoUpdate
@@ -1005,6 +1237,9 @@ while ($true) {
     Write-Host '    8. Remove Sogou startup entries'
     Write-Host '    9. Disable Sogou services'
     Write-Host '    10. Block Sogou auto-update'
+    Write-Host '    11. Remove Sogou CLSID entries'
+    Write-Host '    12. Remove Approved shell extensions'
+    Write-Host '    13. Deep registry cleanup'
     Write-Host '    ---'
     Write-Host '    R1. Restore all programs'
     Write-Host '    R2. Restore all plugins'
@@ -1028,6 +1263,9 @@ while ($true) {
         '8' { Remove-StartupEntries; Read-Host '  Press Enter to continue' }
         '9' { Remove-SogouServices; Read-Host '  Press Enter to continue' }
         '10' { Block-AutoUpdate; Read-Host '  Press Enter to continue' }
+        '11' { Remove-SogouCLSIDs; Read-Host '  Press Enter to continue' }
+        '12' { Remove-SogouApprovedExts; Read-Host '  Press Enter to continue' }
+        '13' { Remove-SogouDeepRegistry; Read-Host '  Press Enter to continue' }
         'R1' { Enable-ExeFiles -ExeDir $Paths.ExeDir; Read-Host '  Press Enter to continue' }
         'R2' { Enable-PluginDirs -PluginDir $Paths.PluginDir; Read-Host '  Press Enter to continue' }
         'R3' { Restore-SogouServices; Read-Host '  Press Enter to continue' }
